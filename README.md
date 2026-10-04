@@ -1,109 +1,144 @@
 # http-fiber
 
-A C++ project built with Bazel inside a Nix dev shell, laid out after
-[nix-bazel-cpp](https://github.com/lukeyeh/nix-bazel-cpp-skill), that uses
-[Gloop](https://github.com/lukeyeh/gloop). It is a small HTTP/1.1 server in
-which every connection is served by its own
+A small HTTP/1.1 server in which every connection is served by its own
 [Gloop fiber](https://github.com/lukeyeh/gloop/blob/nix/gloop/thread/fiber/fiber.h).
-
-Nix pins the compiler, the tools and the nixpkgs libraries; Bazel builds the
-code, and fetches Gloop.
-
-## Setup
+The code that handles a connection is plain blocking code, read a request,
+write a response, and a connection that is waiting for its client costs the
+others nothing.
 
 ```
-nix develop                  # or `direnv allow` once
-bazel test //...
-bazel run //http_server -- --port=8080      # then: curl localhost:8080
+nix develop                                 # or `direnv allow` once
+bazel run //http_server -- --port=8080
+curl localhost:8080                         # Hello from a fiber!
 ```
 
 Bazel must be run inside the Nix shell; outside it, Bazel silently uses the
 host compiler, which Gloop rejects. The first build takes a few minutes while
-Bazel builds Abseil and Nix builds Google Benchmark.
+Bazel builds Gloop and Abseil and Nix builds Google Benchmark.
+
+## How it works
+
+```
+Server
+  └─ accepting fiber          waits in Listener::Accept
+       └─ Bundle
+            ├─ connection fiber    read request → handler → write response
+            ├─ connection fiber
+            └─ ...
+```
+
+- **One fiber accepts.** `Server::Start` creates a root `thread::Fiber` that
+  loops on `os::Listener::Accept`.
+- **One fiber per connection.** Each accepted socket is handed to a new fiber
+  in a `thread::Bundle`, which frees the fiber as soon as it finishes.
+- **Waiting does not block the others.** Gloop schedules fibers
+  cooperatively, so a fiber must say when it is about to wait in the kernel.
+  `os/socket.cc` wraps every such call in a `PotentiallyBlockingRegion`,
+  which is the one place that has to know this.
+- **Destroying the server stops it.** The destructor cancels the accepting
+  fiber, shuts the listener down to wake it out of `Accept`, and joins it,
+  which waits for the requests in progress.
+
+## Using the server
+
+```cpp
+#include "http_server/server.h"
+
+http_server::Response Greet(const http_server::Request& request) {
+  return http_server::Response{
+      .body = "you asked for " + request.target,
+  };
+}
+
+absl::StatusOr<std::unique_ptr<http_server::Server>> server =
+    http_server::Server::Start(8080, Greet);
+```
+
+The handler may be called from several fibers at once. Passing port 0 picks
+a free port, which `server->port()` reports. `http_server/server_test.cc`
+shows the rest, from a client's point of view.
+
+## Limits
+
+It is deliberately barebones:
+
+- It listens on the loopback interface only, so only this machine can reach
+  it.
+- One request per connection; every response says `Connection: close`.
+- Only the request line is read. Headers are not interpreted and a request
+  body is ignored.
+- A request head over 8 KB is answered with 431, a malformed request line
+  with 400, and a client that sends nothing for 5 seconds is dropped.
+- The program has no signal handling; it runs until killed.
+
+## Layout
+
+Dependencies point downwards, and Bazel `visibility` enforces it.
+
+| Path | Purpose |
+| --- | --- |
+| `http_server/main.cc` | The `http_server` program: flags and the greeting handler |
+| `http_server/server.h` | `Server`: the accepting fiber and the fiber per connection |
+| `http_server/http.h` | `Request`, `Response` and the HTTP wire format |
+| `os/socket.h` | `Socket` and `Listener`; the only code that makes system calls |
+| `testing/main.cc` | The `main` every test links |
+
+Every `foo.h`/`foo.cc` has a `foo_test.cc` beside it, written to be read as
+documentation for `foo`.
 
 ## Everyday commands
 
 | To | Run |
 | --- | --- |
 | Run all tests | `bazel test //...` |
-| Run one test file's benchmarks | `bazel run -c opt //testing:main_test -- --benchmark_filter=all` |
+| Run the benchmarks in a test file | `bazel run -c opt //http_server:server_test -- --benchmark_filter=all` |
 | Generate `compile_commands.json` for clangd | `bazel run :compile_commands` |
 | Format | `clang-format -i */*.cc */*.h` and `buildifier -r .` |
 | Lint | `clang-tidy */*.cc` (after generating compile commands) |
-| Flamegraph of a target | `bazel run --config=flamegraph //testing:main_test -- --benchmark_filter=all`, then open `/tmp/flamegraph.svg` |
+| Flamegraph of serving requests | `bazel run --config=flamegraph //http_server:server_test -- --benchmark_filter=all`, then open `/tmp/flamegraph.svg` |
+
+A `foo_test.cc` holds the tests for `foo` and, below them, its benchmarks.
+The binary runs the tests by default and the benchmarks when given any
+`--benchmark...` flag.
 
 Start clangd with `--query-driver=/**/*` so that it can find Nix's system
 headers.
 
-## Tests and benchmarks
+## Build environment
 
-Each `foo_test.cc` holds the tests for `foo` and, below them, its benchmarks.
-Every test links `//testing:main`, which runs the tests by default and the
-benchmarks when given any `--benchmark...` flag. `testing/main_test.cc` is the
-smallest example.
-
-## What Gloop changes
-
-Three things differ from a nix-bazel-cpp project without Gloop. Gloop's
+Nix pins the compiler, the tools and the nixpkgs libraries; Bazel builds the
+code and fetches Gloop. Gloop's requirements decide most of the setup; its
 [NIX.md](https://github.com/lukeyeh/gloop/blob/nix/NIX.md) has the details.
 
-1.  **The dev shell comes from Gloop's flake.** Gloop only compiles with
-    clang and libc++, never libstdc++. `gloop.lib.mkDevShell` in `flake.nix`
-    is `pkgs.mkShell` with that toolchain and Bazel configured for it.
-2.  **Gloop, Abseil and GoogleTest come from the Bazel registry, not
-    nixpkgs.** Gloop exists only as a Bazel module and builds its own Abseil;
-    taking the same ones keeps a single copy in each binary. Everything else
-    still comes from nixpkgs.
-3.  **There is no Nix package.** `nix build` in nix-bazel-cpp compiles the
-    sources without Bazel, which cannot work for code that needs Gloop.
-    Deploy the binary Bazel builds.
-
-`.bazelrc` also carries the two flags Gloop insists on, `-fno-exceptions` and
-`-funsigned-char`.
-
-## Libraries
+- **The dev shell comes from Gloop's flake.** Gloop only compiles with clang
+  and libc++, never libstdc++. `gloop.lib.mkDevShell` in `flake.nix` provides
+  that toolchain with Bazel configured for it.
+- **`.bazelrc` sets `-fno-exceptions` and `-funsigned-char`**, which Gloop
+  insists on. Nothing in this repository throws; failures are `absl::Status`.
+- **There is no `nix build`.** Deploy the binary Bazel builds,
+  `bazel-bin/http_server/http_server`.
 
 | From | Libraries | Depend on them as |
 | --- | --- | --- |
-| The fork, by commit (`MODULE.bazel`) | Gloop | `@gloop//gloop/thread/fiber` |
-| Bazel registry (`MODULE.bazel`) | Abseil, GoogleTest | `@abseil-cpp//absl/strings`, `@googletest//:gtest` |
-| nixpkgs (`nix/deps.nix`) | Google Benchmark, and anything you add | `@gbenchmark` |
+| [lukeyeh/gloop](https://github.com/lukeyeh/gloop), by commit (`MODULE.bazel`) | Gloop | `@gloop//gloop/thread/fiber` |
+| Bazel registry (`MODULE.bazel`) | Abseil, GoogleTest | `@abseil-cpp//absl/status`, `@googletest//:gtest` |
+| nixpkgs (`nix/deps.nix`) | Google Benchmark | `@gbenchmark` |
 
-### Using another part of Gloop
-
-Add its target to `deps`, for example `"@gloop//gloop/util/math:mathutil"`.
-The target names are in the `BUILD` file next to each header in the fork.
-
-### Adding a library from nixpkgs
-
-1. Add the package to `nix/deps.nix`. A C library goes in as it is. A C++
-   library must be rebuilt against libc++, as `gbenchmark` is there.
-2. Add a `nix_pkg.file(...)` block for it in `MODULE.bazel`, copying the
-   existing one, and its name to the `use_repo` line. List shared libraries by
-   their versioned name, e.g. `srcs = ["lib/liburing.so.2"]`.
-3. Depend on it in a `BUILD` file as `"@<name>"`.
-
-Do not add Abseil, GoogleTest or protobuf this way; see above.
+Abseil and GoogleTest come from the registry at the versions Gloop itself
+uses, so that a binary holds one copy of each.
 
 ### Updating Gloop
 
-The fork follows upstream daily. To move to a newer Gloop, put a newer commit
-of its `nix` branch in the `git_override` in `MODULE.bazel` and run
-`nix flake update gloop`, so that the code and the dev shell move together.
-If Gloop's `MODULE.bazel` has raised its Abseil or GoogleTest version, raise
-them here to match.
+The fork follows upstream daily. Put a newer commit of its `nix` branch in
+the `git_override` in `MODULE.bazel` and run `nix flake update gloop`, so
+that the code and the dev shell move together. If Gloop's `MODULE.bazel` has
+raised its Abseil or GoogleTest version, raise them here to match.
 
-## Layout
+### Adding a library
 
-| Path | Purpose |
-| --- | --- |
-| `http_server/server.h` | The server: an accepting fiber and a fiber per connection |
-| `http_server/http.h` | Parsing requests and writing responses |
-| `http_server/main.cc` | The `http_server` program |
-| `os/socket.h` | TCP sockets; the only code that makes system calls |
-| `testing/main.cc` | The `main` of every test |
-| `nix/deps.nix` | The list of libraries taken from nixpkgs |
-| `nix/bazel.nix` | Presents those libraries to Bazel |
-| `MODULE.bazel` | Gloop, the registry libraries and the nixpkgs imports |
-| `.bazelrc` | Build flags and profiling configs |
-| `flake.nix`, `flake.lock` | The dev shell and the pin for nixpkgs and Gloop's flake |
+- **From Gloop:** add its target to `deps`; the names are in the `BUILD` file
+  next to each header in the fork.
+- **From nixpkgs:** add the package to `nix/deps.nix` (a C++ library must be
+  rebuilt against libc++, as `gbenchmark` is there), add a
+  `nix_pkg.file(...)` block for it in `MODULE.bazel`, and depend on it as
+  `"@<name>"`.

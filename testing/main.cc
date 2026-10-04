@@ -4,10 +4,10 @@
 // whether it works, and benchmarks, which say what it costs. One binary runs
 // either:
 //
-//   bazel test //testing:main_test
+//   bazel test //http_server:server_test
 //       Runs the tests.
 //
-//   bazel run -c opt //testing:main_test -- --benchmark_filter=all
+//   bazel run -c opt //http_server:server_test -- --benchmark_filter=all
 //       Runs the benchmarks instead. Any flag starting with --benchmark
 //       selects this mode; --benchmark_filter takes a regular expression to
 //       choose which ones.

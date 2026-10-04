@@ -1,7 +1,10 @@
 // Shows how to start a Server and what a client sees from it, including that
-// one slow client does not hold up the others.
+// one slow client does not hold up the others, then measures how long a
+// request takes from connecting to the last byte of the response.
 
 #include "http_server/server.h"
+
+#include <benchmark/benchmark.h>
 
 #include <array>
 #include <cstddef>
@@ -125,6 +128,17 @@ TEST(ServerTest, StopsListeningWhenDestroyed) {
   EXPECT_THAT(os::Socket::Connect(port),
               StatusIs(absl::StatusCode::kUnavailable));
 }
+
+// One client making requests back to back, each on a new connection, so this
+// includes starting and joining the connection's fiber.
+void BM_RequestOverANewConnection(benchmark::State& state) {
+  const std::unique_ptr<Server> server = StartEchoServer();
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(
+        Exchange(server->port(), "GET /bench HTTP/1.1\r\n\r\n"));
+  }
+}
+BENCHMARK(BM_RequestOverANewConnection);
 
 }  // namespace
 }  // namespace http_server

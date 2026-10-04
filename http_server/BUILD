@@ -38,6 +38,7 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
+        "@gbenchmark",
         "@googletest//:gtest",
     ],
 )
@@ -71,6 +72,7 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
+        "@gbenchmark",
         "@googletest//:gtest",
     ],
 )

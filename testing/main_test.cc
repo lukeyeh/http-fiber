@@ -1,5 +1,5 @@
-// The smallest file that uses //testing:main: one test and one benchmark.
-// Copy its shape for a new _test.cc.
+// Checks that a binary linking //testing:main can hold tests and benchmarks
+// side by side, and runs only the kind that was asked for.
 
 #include <benchmark/benchmark.h>
 
@@ -7,12 +7,17 @@
 
 namespace {
 
-// `bazel test //testing:main_test` runs this and not the benchmark.
-TEST(MainTest, RunsTestsByDefault) { EXPECT_EQ(1 + 1, 2); }
+bool benchmark_ran = false;
 
-// `bazel run -c opt //testing:main_test -- --benchmark_filter=all` runs this
-// and not the test.
+// `bazel test //testing:main_test` runs this, and by then no benchmark has.
+TEST(MainTest, RunsTestsAndNotBenchmarksByDefault) {
+  EXPECT_FALSE(benchmark_ran);
+}
+
+// `bazel run //testing:main_test -- --benchmark_filter=all` runs this and
+// not the test.
 void BM_Nothing(benchmark::State& state) {
+  benchmark_ran = true;
   for (auto _ : state) {
     int value = 0;
     benchmark::DoNotOptimize(value);

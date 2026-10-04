@@ -1,5 +1,5 @@
 {
-  description = "http-fiber: a C++ project built with Bazel and Nix that uses Gloop";
+  description = "http-fiber: an HTTP server that serves each connection in a Gloop fiber";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";

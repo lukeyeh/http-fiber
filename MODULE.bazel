@@ -4,7 +4,7 @@ bazel_dep(name = "rules_cc", version = "0.2.25")
 
 # Gloop, from the fork that builds under Nix. It only exists as a Bazel
 # module, so unlike other libraries it cannot come from nixpkgs. Depend on its
-# targets as "@gloop//gloop/util/gtl:intrusive_list".
+# targets as "@gloop//gloop/thread/fiber".
 #
 # To update, take a newer commit of the fork's `nix` branch (each sync is also
 # tagged nix-YYYYMMDD), and run `nix flake update gloop`.
