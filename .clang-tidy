@@ -1,0 +1,23 @@
+# Run with: bazel run :compile_commands && clang-tidy */*.cc
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  performance-*,
+  misc-const-correctness,
+  misc-unused-using-decls,
+  misc-include-cleaner,
+  google-explicit-constructor,
+  google-build-using-namespace,
+  google-readability-casting,
+  readability-container-size-empty,
+  readability-redundant-string-init,
+  readability-redundant-smartptr-get,
+# Report findings in this repository's headers, not in the libraries', which
+# Bazel keeps under external/.
+HeaderFilterRegex: '.*'
+ExcludeHeaderFilterRegex: '(^|/)external/|^/nix/store/'
+CheckOptions:
+  # System headers pull their declarations from internal sub-headers that
+  # should not be included directly.
+  misc-include-cleaner.IgnoreHeaders: 'linux/.*;bits/.*;asm.*;sys/.*'

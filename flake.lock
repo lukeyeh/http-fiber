@@ -1,0 +1,48 @@
+{
+  "nodes": {
+    "gloop": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791155727,
+        "narHash": "sha256-et4EB6QPqEkkH8l8kt9JnK3bgWSoAB/rDstWgicq75k=",
+        "owner": "lukeyeh",
+        "repo": "gloop",
+        "rev": "e7b1c2f777cd832dbd7d3844f74eb3b70dcef544",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lukeyeh",
+        "repo": "gloop",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1791048980,
+        "narHash": "sha256-KgItSKML8Xvte0B7/uGnBDsYzSnnKHcOaiUbgWBXLXw=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "a7868a727837f3c09cee2ce0ca671c76b1589fed",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "gloop": "gloop",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

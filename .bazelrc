@@ -1,0 +1,45 @@
+build --cxxopt=-std=c++20
+build --host_cxxopt=-std=c++20
+
+# Gloop refuses to compile without these two.
+build --copt=-fno-exceptions --host_copt=-fno-exceptions
+build --copt=-funsigned-char --host_copt=-funsigned-char
+
+# Header-parsing actions have no source file, which crashes the
+# compile_commands.json generator.
+build --features=-parse_headers
+build --host_features=-parse_headers
+
+# Link this repository's own libraries into each binary statically. Left to
+# itself Bazel builds them as shared libraries for tests, and a shared library
+# cannot contain the static libraries from Nix that it depends on.
+build --dynamic_mode=off
+
+test --test_output=errors
+
+# Profiling. `--config=profile` is an optimised build that keeps what a
+# profiler needs to name functions and walk the stack.
+build:profile --compilation_mode=opt
+build:profile --copt=-g
+build:profile --copt=-fno-omit-frame-pointer
+build:profile --strip=never
+
+# `bazel run --config=flamegraph //some:target` runs it under perf and writes
+# /tmp/flamegraph.svg.
+#
+# The output paths here are fixed rather than relative to where bazel was run
+# from, because bazel runs tests, unlike binaries, without a shell that could
+# work that directory out. They are outside the repository, so nothing
+# profiling writes can be committed by accident.
+run:flamegraph --config=profile
+# Lets a test target find `flamegraph`, which comes from the Nix shell. Bazel
+# runs tests with a minimal PATH otherwise.
+run:flamegraph --test_env=PATH
+run:flamegraph --run_under='flamegraph -o /tmp/flamegraph.svg --'
+
+# `bazel run --config=record //some:target` runs it under perf and writes the
+# recording to /tmp/perf.data, for viewing with `samply import /tmp/perf.data`
+# or `pprof -http=localhost:8000 /tmp/perf.data`.
+run:record --config=profile
+run:record --test_env=PATH
+run:record --run_under='perf record -g -o /tmp/perf.data --'
