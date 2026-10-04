@@ -2,8 +2,9 @@
 
 A C++ project built with Bazel inside a Nix dev shell, laid out after
 [nix-bazel-cpp](https://github.com/lukeyeh/nix-bazel-cpp-skill), that uses
-[Gloop](https://github.com/lukeyeh/gloop). It holds no code of its own yet,
-only the build setup and the `main` that tests link.
+[Gloop](https://github.com/lukeyeh/gloop). It is a small HTTP/1.1 server in
+which every connection is served by its own
+[Gloop fiber](https://github.com/lukeyeh/gloop/blob/nix/gloop/thread/fiber/fiber.h).
 
 Nix pins the compiler, the tools and the nixpkgs libraries; Bazel builds the
 code, and fetches Gloop.
@@ -13,6 +14,7 @@ code, and fetches Gloop.
 ```
 nix develop                  # or `direnv allow` once
 bazel test //...
+bazel run //http_server -- --port=8080      # then: curl localhost:8080
 ```
 
 Bazel must be run inside the Nix shell; outside it, Bazel silently uses the
@@ -63,7 +65,7 @@ Three things differ from a nix-bazel-cpp project without Gloop. Gloop's
 
 | From | Libraries | Depend on them as |
 | --- | --- | --- |
-| The fork, by commit (`MODULE.bazel`) | Gloop | `@gloop//gloop/util/gtl:intrusive_list` |
+| The fork, by commit (`MODULE.bazel`) | Gloop | `@gloop//gloop/thread/fiber` |
 | Bazel registry (`MODULE.bazel`) | Abseil, GoogleTest | `@abseil-cpp//absl/strings`, `@googletest//:gtest` |
 | nixpkgs (`nix/deps.nix`) | Google Benchmark, and anything you add | `@gbenchmark` |
 
@@ -95,6 +97,10 @@ them here to match.
 
 | Path | Purpose |
 | --- | --- |
+| `http_server/server.h` | The server: an accepting fiber and a fiber per connection |
+| `http_server/http.h` | Parsing requests and writing responses |
+| `http_server/main.cc` | The `http_server` program |
+| `os/socket.h` | TCP sockets; the only code that makes system calls |
 | `testing/main.cc` | The `main` of every test |
 | `nix/deps.nix` | The list of libraries taken from nixpkgs |
 | `nix/bazel.nix` | Presents those libraries to Bazel |
